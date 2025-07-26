@@ -1,21 +1,39 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+import altair as alt
 
-st.title("Excel Upload - Test")
+st.title("PSP vs Stationing Chart")
 
-uploaded = st.file_uploader("Upload .xlsx file", type="xlsx")
-
+uploaded = st.file_uploader("Upload Excel (.xlsx) with required columns", type=["xlsx"])
 if uploaded:
-    @st.cache_data
-    def load_excel(u):
-        return pd.read_excel(BytesIO(u.getvalue()), engine="openpyxl")
+    df = pd.read_excel(BytesIO(uploaded.getvalue()), engine="openpyxl")
+    st.write("Loaded data preview:", df.head(), use_container_width=True)
 
-    try:
-        df = load_excel(uploaded)
-        st.success(f"Loaded {df.shape[0]} rows × {df.shape[1]} columns")
-        st.dataframe(df.head())
-    except Exception as e:
-        st.error(f"Error reading Excel: {e}")
+    required = ["Stationing (m)", "ON PSP (VE V)", "OFF PSP (VE V)"]
+    if all(col in df.columns for col in required):
+        df_clean = df[required].dropna(subset=["Stationing (m)"]).fillna(0)
+        df_clean = df_clean.astype({
+            "Stationing (m)": float,
+            "ON PSP (VE V)": float,
+            "OFF PSP (VE V)": float
+        })
+
+        df_long = df_clean.melt(
+            id_vars="Stationing (m)",
+            value_vars=["ON PSP (VE V)", "OFF PSP (VE V)"],
+            var_name="PSP Type",
+            value_name="PSP Value"
+        )
+
+        chart = alt.Chart(df_long).mark_line(point=True).encode(
+            x=alt.X("Stationing (m):Q", title="Stationing (m)"),
+            y=alt.Y("PSP Value:Q", title="PSP (VE V)"),
+            color=alt.Color("PSP Type:N", title="")
+        ).interactive()
+
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.error(f"Excel file must contain columns: {required}")
 else:
-    st.info("Please upload your Excel file.")
+    st.info("Upload your Excel (.xlsx) file containing the data.")
